@@ -54,7 +54,7 @@
     color:var(--dim);text-transform:uppercase;
   }
 
-  nav{margin-top:4.5vh;display:flex;flex-direction:column;gap:.35em}
+  nav{margin-top:3.2vh;display:flex;flex-direction:column;gap:.35em}
   .item{
     position:relative;
     font-size:clamp(15px,2.15vw,30px);
