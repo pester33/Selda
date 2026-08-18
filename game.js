@@ -3,7 +3,7 @@
 
 const W = 960, H = 540, TILE = 40, ROWS = 13, YOFF = 10;
 const GRAV = 0.62, MAXFALL = 13.5;
-const GD_JUMP = -12.0, GD_SPIN = 0.163;
+const GD_JUMP = -12.0, GD_SPIN = 0.163, ORB_JUMP = -13.4;
 
 const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
@@ -76,7 +76,7 @@ const LEVELS = [
 "...............................====.............",
 "......................====......................",
 "......................h.........................",
-".............====...............................",
+".............====........o......................",
 "......................................w.........",
 "...........w..........................=====.....",
 "..P................^^..........^^.............D.",
@@ -91,7 +91,7 @@ const LEVELS = [
 "..................====..............................",
 "........................................====........",
 "...........f.....................f..................",
-".............................====...................",
+"................o............====.o.................",
 "...............h....................................",
 "......w...................w.........................",
 "..P.....................^^................^^......D.",
@@ -106,7 +106,7 @@ const LEVELS = [
 "...............====.....................................",
 "........................................====............",
 ".....................f..........................f.......",
-"........====....................====....................",
+"........====..........o.........====.......o............",
 "..............................h.........................",
 "......t...............t.....................t...........",
 "..P.......w....................w......................D.",
@@ -121,7 +121,7 @@ const LEVELS = [
 "........................",
 "........................",
 "...====..........====...",
-"........................",
+".....o............o.....",
 "........................",
 "........................",
 "..P...........B.........",
@@ -136,7 +136,7 @@ const LEVELS = [
 "........................................................",
 ".......====................====.................====....",
 "....f.........f.......f................f........f.......",
-"........................................................",
+".............o...............o...............o..........",
 "...........h............................h...............",
 "......w...........w..........w.................w........",
 "..P.................^^..............^^................D.",
@@ -151,7 +151,7 @@ const LEVELS = [
 "........................====................................",
 "..............f.........................f...................",
 "...................................====.....................",
-"........t................t....................t.....t.......",
+"........t....o...........t.o..............o...t.....t.......",
 ".........................h..................................",
 ".........w.............w.............w..............w.......",
 "..P.................^.............^...............^^......D.",
@@ -166,7 +166,7 @@ const LEVELS = [
 "........................",
 "....====..........====..",
 "........................",
-"........................",
+".....o............o.....",
 "..........====..........",
 "........................",
 "..P...........B.........",
@@ -181,7 +181,7 @@ const LEVELS = [
 ".....====........................====.......................",
 ".........f...........f...........f...........f...........f..",
 ".....................====...................................",
-"..........t...........t...........t...........t......====...",
+"..........t..o........t..o........t...o.......t...o..====...",
 "...........h.........................................h......",
 "....w...........w............w...........w...........w......",
 "..P................^...........^............^.............D.",
@@ -196,7 +196,7 @@ const LEVELS = [
 ".................................====.......................",
 ".......f...........f............f.............f...........f.",
 ".............====.............................====..........",
-"........t...........t............t.............t............",
+"........t..o........t...o........t....o........t...o........",
 ".....................h.........................h............",
 "...w...........w............w.............w...........w.....",
 "..P..............^.............^............^.............D.",
@@ -211,7 +211,7 @@ const LEVELS = [
 "........................",
 "..====..............====",
 "........................",
-"........................",
+".....o............o.....",
 "......====....====......",
 "........................",
 "..P...........B.........",
@@ -259,7 +259,7 @@ const hit=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 
 const world = {
   map:[], w:0, h:ROWS*TILE, cols:0, camx:0, tint:"#16202f",
-  gate:null, index:0, shake:0
+  gate:null, index:0, shake:0, sx:0, sy:0
 };
 
 function solidAt(cx,cy){
@@ -278,7 +278,7 @@ function spikeAt(cx,cy){
 }
 
 let player=null, enemies=[], shots=[], parts=[], waves=[], hazards=[], boss=null;
-let pickups=[], gate=null;
+let pickups=[], orbs=[], gate=null;
 
 function makePlayer(x,y,keepHp){
   const hp = keepHp!=null?keepHp:5;
@@ -646,6 +646,7 @@ const SFX={
   gate:()=>{blip(300,0.4,'sine',0.06,760);},
   boss:()=>{blip(90,0.7,'sawtooth',0.09,50);noise(0.5,0.06);},
   die:()=>{blip(240,0.7,'sawtooth',0.09,50);noise(0.4,0.08);},
+  orb:()=>{blip(520,0.16,'triangle',0.06,1250);blip(780,0.10,'sine',0.04,1600);},
   ui:()=>blip(620,0.05,'triangle',0.035,760)
 };
 
@@ -729,13 +730,14 @@ function loadLevel(i,keepHp){
   world.cols=L.map[0].length;
   world.w=world.cols*TILE;
   world.tint=L.tint; world.index=i; world.camx=0; world.shake=0;
-  enemies=[];shots=[];parts=[];waves=[];hazards=[];pickups=[];boss=null;gate=null;
+  enemies=[];shots=[];parts=[];waves=[];hazards=[];pickups=[];orbs=[];boss=null;gate=null;
   let px=80,py=100;
   for(let y=0;y<ROWS;y++) for(let x=0;x<world.cols;x++){
     const c=world.map[y][x];
     if(c==='P'){ px=x*TILE+9; py=y*TILE+10; world.map[y][x]='.'; }
     else if(c==='D'){ gate={x:x*TILE+4,y:y*TILE-8,w:32,h:48}; world.map[y][x]='.'; }
     else if(c==='h'){ pickups.push({x:x*TILE+12,y:y*TILE+12,w:16,h:16,t:rnd(0,9)}); world.map[y][x]='.'; }
+    else if(c==='o'){ orbs.push({x:x*TILE+TILE/2,y:y*TILE+TILE/2,r:15,cd:0,t:rnd(0,9)}); world.map[y][x]='.'; }
     else if(c==='w'||c==='f'||c==='t'){ enemies.push(makeEnemy(c,x*TILE,y*TILE)); world.map[y][x]='.'; }
     else if(c==='B'){ boss=makeBoss(L.boss,x*TILE+TILE/2,y*TILE); world.map[y][x]='.'; SFX.boss(); }
   }
@@ -818,6 +820,23 @@ function updatePlayer(){
       SFX.jump(); burst(p.x+p.w/2,p.y+p.h,5,'#8fa8bb',1.6,2);
     }
     p.buf=0; p.coyote=0;
+  }
+
+  for(const o of orbs) if(o.cd>0) o.cd--;
+  if(p.buf>0 && p.dash<=0 && p.heal===0){
+    for(const o of orbs){
+      if(o.cd>0) continue;
+      const dx=(p.x+p.w/2)-o.x, dy=(p.y+p.h/2)-o.y;
+      if(dx*dx+dy*dy < (o.r+17)*(o.r+17)){
+        p.vy=ORB_JUMP; p.air=true;
+        p.spinDir = Math.abs(p.vx)>0.3 ? (p.vx>0?1:-1) : p.face;
+        o.cd=40; p.buf=0; p.coyote=0;
+        burst(o.x,o.y,16,'#7cc6ff',3.6);
+        world.shake=Math.max(world.shake,3);
+        SFX.orb();
+        break;
+      }
+    }
   }
 
   if(tapped('slash') && p.atk<=0 && p.heal===0){
@@ -984,15 +1003,32 @@ function drawBG(){
   ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
 
   for(let layer=0;layer<2;layer++){
-    const par=layer===0?0.14:0.32, base=layer===0?0.72:1.05;
-    ctx.fillStyle=shade(world.tint, base);
+    const par=layer===0?0.13:0.30;
+    const col=mixHex(world.tint, layer===0?'#4a5c74':'#2b3648', layer===0?0.30:0.42);
     for(let i=0;i<34;i++){
       const bx=i*230+srnd(i+layer*50)*120;
       let x=bx-world.camx*par; x=((x%3600)+3600)%3600-400;
-      if(x>W+200||x<-260) continue;
-      const w=52+srnd(i+7+layer*9)*70, h=200+srnd(i+13+layer*3)*280;
-      ctx.fillRect(x,H-h,w,h);
-      ctx.beginPath(); ctx.moveTo(x-9,H-h); ctx.lineTo(x+w/2,H-h-34); ctx.lineTo(x+w+9,H-h); ctx.closePath(); ctx.fill();
+      if(x>W+220||x<-280) continue;
+      const w=58+srnd(i+7+layer*9)*76, h=210+srnd(i+13+layer*3)*250;
+      const top=H-h;
+      ctx.fillStyle=col;
+      ctx.beginPath();
+      ctx.moveTo(x,H);
+      ctx.lineTo(x,top+w*0.55);
+      ctx.quadraticCurveTo(x+w/2,top-w*0.30,x+w,top+w*0.55);
+      ctx.lineTo(x+w,H);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle=mixHex(world.tint,'#000000',0.30);
+      const iw=w*0.46, ix=x+(w-iw)/2, itop=top+w*0.62;
+      ctx.beginPath();
+      ctx.moveTo(ix,H);
+      ctx.lineTo(ix,itop+iw*0.6);
+      ctx.quadraticCurveTo(ix+iw/2,itop-iw*0.25,ix+iw,itop+iw*0.6);
+      ctx.lineTo(ix+iw,H);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.045)';
+      ctx.fillRect(x,top+w*0.55,w,3);
+      for(let b=1;b<4;b++) ctx.fillRect(x,top+w*0.55+b*54,w,2);
     }
   }
 
@@ -1015,35 +1051,63 @@ function drawMotes(){
 function drawTiles(){
   const c0=Math.max(0,Math.floor(world.camx/TILE)-1);
   const c1=Math.min(world.cols-1,Math.ceil((world.camx+W)/TILE));
-  const rock=mixHex(world.tint,'#8496ae',0.40), edge=mixHex(world.tint,'#e2edf7',0.72), deep=mixHex(world.tint,'#000000',0.42);
+  const t=world.tint;
+  const face  = mixHex(t,'#93a7c0',0.34);
+  const face2 = mixHex(t,'#63748d',0.26);
+  const face3 = mixHex(t,'#000000',0.34);
+  const lip   = mixHex(t,'#f2f7fc',0.82);
+  const lip2  = mixHex(t,'#a8c0d8',0.50);
+  const seam  = 'rgba(0,0,0,0.26)';
+
   for(let y=0;y<ROWS;y++) for(let x=c0;x<=c1;x++){
     const c=world.map[y][x]; if(c==='.') continue;
-    const px=x*TILE-world.camx, py=y*TILE+YOFF;
+    const px=Math.round(x*TILE-world.camx), py=y*TILE+YOFF;
+
     if(c==='#'){
-      ctx.fillStyle=rock; ctx.fillRect(px,py,TILE,TILE);
-      ctx.fillStyle=deep;
-      const n=srnd(x*31+y*17);
-      ctx.fillRect(px+4+n*20,py+8+n*14,7+n*9,5+n*7);
-      if(!solidAt(x,y-1)){
-        ctx.fillStyle=edge; ctx.fillRect(px,py,TILE,3);
-        ctx.globalAlpha=0.35; ctx.fillRect(px,py+3,TILE,2); ctx.globalAlpha=1;
+      let depth=0;
+      while(depth<3 && solidAt(x,y-1-depth)) depth++;
+      ctx.fillStyle = depth===0?face : depth===1?face2 : face3;
+      ctx.fillRect(px,py,TILE,TILE);
+
+      if(depth<2){
+        const v=srnd(x*37+y*61);
+        ctx.fillStyle='rgba(0,0,0,0.10)';
+        ctx.fillRect(px+2+Math.floor(v*16), py+6+Math.floor(v*20), 6+Math.floor(v*12), 3+Math.floor(v*5));
+        ctx.fillStyle=seam;
+        ctx.fillRect(px, py+TILE-1, TILE, 1);
+        const off = (y%2===0)? 0 : TILE/2;
+        ctx.fillRect(px+off, py, 1, TILE);
+        if(off===0) ctx.fillRect(px+TILE-1, py, 1, TILE);
       }
-      ctx.strokeStyle='rgba(0,0,0,0.22)'; ctx.lineWidth=1;
-      ctx.strokeRect(px+0.5,py+0.5,TILE-1,TILE-1);
+
+      if(!solidAt(x,y-1)){
+        ctx.fillStyle=lip;  ctx.fillRect(px,py,TILE,3);
+        ctx.fillStyle=lip2; ctx.fillRect(px,py+3,TILE,2);
+        ctx.fillStyle='rgba(255,255,255,0.05)'; ctx.fillRect(px,py+5,TILE,6);
+        if(!solidAt(x-1,y)) ctx.fillStyle=lip, ctx.fillRect(px,py,2,7);
+        if(!solidAt(x+1,y)) ctx.fillStyle=lip, ctx.fillRect(px+TILE-2,py,2,7);
+      }
+      if(!solidAt(x-1,y)){ ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.fillRect(px,py,4,TILE); }
+      if(!solidAt(x+1,y)){ ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.fillRect(px+TILE-4,py,4,TILE); }
     }
     else if(c==='='){
-      ctx.fillStyle=mixHex(world.tint,'#9fb0c6',0.52); ctx.fillRect(px,py,TILE,9);
-      ctx.fillStyle=edge; ctx.fillRect(px,py,TILE,2.5);
-      ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(px,py+9,TILE,3);
+      ctx.fillStyle=mixHex(t,'#8fa5bd',0.44); ctx.fillRect(px,py+2,TILE,7);
+      ctx.fillStyle=lip;  ctx.fillRect(px,py,TILE,3);
+      ctx.fillStyle=lip2; ctx.fillRect(px,py+3,TILE,1);
+      ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(px,py+9,TILE,3);
+      ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.fillRect(px+TILE-1,py,1,9);
     }
     else if(c==='^'){
-      ctx.fillStyle='#9fb0c2';
       for(let i=0;i<4;i++){
         const sx=px+i*10;
-        ctx.beginPath(); ctx.moveTo(sx,py+TILE); ctx.lineTo(sx+5,py+13); ctx.lineTo(sx+10,py+TILE); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#0c1016';
+        ctx.beginPath(); ctx.moveTo(sx,py+TILE); ctx.lineTo(sx+5,py+11); ctx.lineTo(sx+10,py+TILE); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#b9c9db';
+        ctx.beginPath(); ctx.moveTo(sx+1.5,py+TILE-1); ctx.lineTo(sx+5,py+13); ctx.lineTo(sx+8.5,py+TILE-1); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#f0f6fb';
+        ctx.beginPath(); ctx.moveTo(sx+3.6,py+TILE-1); ctx.lineTo(sx+5,py+13); ctx.lineTo(sx+6,py+TILE-1); ctx.closePath(); ctx.fill();
       }
-      ctx.fillStyle='rgba(255,255,255,0.28)';
-      for(let i=0;i<4;i++){ const sx=px+i*10; ctx.fillRect(sx+4,py+15,1.6,TILE-15); }
+      ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(px,py+TILE-3,TILE,3);
     }
   }
 }
@@ -1051,7 +1115,7 @@ function drawTiles(){
 function drawGate(){
   if(!gate) return;
   const open = true;
-  const x=gate.x-world.camx, y=gate.y+YOFF;
+  const x=Math.round(gate.x-world.camx), y=gate.y+YOFF;
   ctx.save();
   if(open){
     const pulse=0.55+0.45*Math.sin(frame*0.05);
@@ -1086,6 +1150,30 @@ function drawPickups(){
     ctx.fillStyle=rg; ctx.fillRect(x-36,y-36,72,72);
     ctx.fillStyle='#fff3d0';
     ctx.beginPath(); ctx.arc(x,y,4.5,0,6.283); ctx.fill();
+  }
+}
+
+function drawOrbs(){
+  for(const o of orbs){
+    o.t+=0.05;
+    const x=Math.round(o.x-world.camx), y=Math.round(o.y+YOFF);
+    if(x<-60||x>W+60) continue;
+    const live=o.cd<=0, R=o.r, pulse=0.6+0.4*Math.sin(o.t*2.2);
+    if(live){
+      const g=ctx.createRadialGradient(x,y,2,x,y,R*2.8);
+      g.addColorStop(0,'rgba(110,190,255,'+(0.40*pulse)+')');
+      g.addColorStop(1,'rgba(80,150,255,0)');
+      ctx.fillStyle=g; ctx.fillRect(x-R*3,y-R*3,R*6,R*6);
+    }
+    ctx.globalAlpha=live?1:0.26;
+    ctx.strokeStyle=live?'#7cc6ff':'#4a6a86'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(x,y,R+(live?pulse*1.4:0),0,6.283); ctx.stroke();
+    ctx.strokeStyle=live?'rgba(226,244,255,'+(0.45+0.55*pulse)+')':'rgba(120,150,175,0.45)';
+    ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(x,y,R-5,0,6.283); ctx.stroke();
+    ctx.fillStyle=live?'#e8f5ff':'#5f7d96';
+    ctx.beginPath(); ctx.arc(x,y,2.8,0,6.283); ctx.fill();
+    ctx.globalAlpha=1;
   }
 }
 
@@ -1334,6 +1422,20 @@ function drawPlayer(){
   }
 }
 
+function drawFog(){
+  ctx.save();
+  ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<6;i++){
+    const px=((i*340-world.camx*0.55)%2100+2100)%2100-300;
+    const py=H-64+Math.sin(frame*0.006+i*1.7)*16;
+    const g=ctx.createRadialGradient(px,py,10,px,py,210);
+    g.addColorStop(0,'rgba(126,168,206,0.055)');
+    g.addColorStop(1,'rgba(126,168,206,0)');
+    ctx.fillStyle=g; ctx.fillRect(px-220,py-220,440,440);
+  }
+  ctx.restore();
+}
+
 function drawVignette(){
   const g=ctx.createRadialGradient(W/2,H/2,H*0.45,W/2,H/2,H*1.0);
   g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.55)');
@@ -1351,13 +1453,13 @@ function render(){
   if(state==='title'||state==='story'||state==='controls'||state==='levels'||state==='end'){
     drawMotes(); drawVignette(); return;
   }
-  const sh=OPT.shake?world.shake:0;
   interpApply(clamp(acc/STEP,0,1));
   ctx.save();
-  if(sh>0) ctx.translate(rnd(-sh,sh),rnd(-sh,sh));
+  if(OPT.shake && world.shake>0) ctx.translate(world.sx||0, world.sy||0);
   drawTiles();
   drawGate();
   drawPickups();
+  drawOrbs();
   for(const e of enemies) if(e.hp>0) drawEnemy(e);
   if(boss) drawBoss(boss);
   drawWaves();
@@ -1366,6 +1468,7 @@ function render(){
   drawParts();
   ctx.restore();
   interpRestore();
+  drawFog();
   drawMotes();
   drawVignette();
   drawSpriteDebug();
@@ -1623,7 +1726,6 @@ function interpApply(a){
   for(const p of parts) add(p);
   world._camx=world.camx;
   world.camx=camPrev+(world.camx-camPrev)*a;
-  if(PIXEL_SNAP) world.camx=Math.round(world.camx);
   interpOn=true;
 }
 
@@ -1652,7 +1754,12 @@ function tick(){
     const target=clamp(player.x+player.w/2-W/2+look, 0, Math.max(0,world.w-W));
     camSmooth += (target-camSmooth)*0.11;
     world.camx = camSmooth;
-    if(world.shake>0){ world.shake*=0.86; if(world.shake<0.4) world.shake=0; }
+    if(world.shake>0){
+      world.shake*=0.86;
+      if(world.shake<0.4) world.shake=0;
+      world.sx=Math.round(rnd(-world.shake,world.shake));
+      world.sy=Math.round(rnd(-world.shake,world.shake));
+    } else { world.sx=0; world.sy=0; }
     if(tagT>0) tagT--;
     drawHUD();
   } else {
