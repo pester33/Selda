@@ -1537,7 +1537,7 @@ const UI={ key(e){
   }
 }};
 
-const isTouch = matchMedia('(pointer:coarse)').matches;
+const isTouch = true;
 function buildTouch(){
   if(!isTouch) return;
   const defs=[
