@@ -12,6 +12,7 @@ const SPRITE_DIR    = '';
 const SPRITE_SIZE   = 34;
 const SPRITE_PIXEL  = true;
 const SPRITE_DEBUG  = false;
+const PIXEL_SNAP    = true;
 
 const SLASH_SIZE    = 62;
 const DASH_SIZE     = 44;
@@ -49,7 +50,7 @@ function drawSpriteDebug(){
 function drawCube(p,cx,cy){
   const s=SPRITE_SIZE;
   ctx.save();
-  ctx.translate(cx,cy);
+  ctx.translate(PIXEL_SNAP?Math.round(cx):cx, PIXEL_SNAP?Math.round(cy):cy);
   ctx.rotate(p.rot);
   if(IMG.player.ok){
     ctx.imageSmoothingEnabled=!SPRITE_PIXEL;
@@ -650,6 +651,65 @@ const SFX={
 
 let state='title', unlocked=1, tagT=0, clearT=0, frame=0;
 let hitstop=0, levelTime=0, levelHits=0, runTime=0, look=0;
+
+const SAVE_KEY='selda_save_v1';
+let saveNote='';
+
+function saveBlob(){
+  return { game:'SELDA', v:1, unlocked:unlocked, best:runTime, opt:{
+    fpsCap:OPT.fpsCap, shake:OPT.shake, sound:OPT.sound,
+    showFps:OPT.showFps, musicVol:OPT.musicVol } };
+}
+function applySave(d){
+  if(!d || d.game!=='SELDA') return false;
+  if(typeof d.unlocked==='number') unlocked=Math.max(1,Math.min(LEVELS.length,Math.round(d.unlocked)));
+  if(d.opt) for(const k in OPT) if(k in d.opt) OPT[k]=d.opt[k];
+  return true;
+}
+function saveGame(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(saveBlob())); return true; }
+  catch(e){ return false; }
+}
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    return applySave(JSON.parse(raw));
+  }catch(e){ return false; }
+}
+function eraseGame(){
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  unlocked=1; runTime=0; saveNote='Save erased.';
+}
+function downloadSave(){
+  try{
+    const txt=JSON.stringify(saveBlob(),null,2);
+    const url=URL.createObjectURL(new Blob([txt],{type:'application/json'}));
+    const a=document.createElement('a');
+    a.href=url; a.download='selda-save.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },400);
+    saveNote='Downloaded selda-save.json';
+  }catch(e){ saveNote='Download failed in this browser.'; }
+}
+function pickSaveFile(){
+  const inp=$('loadfile');
+  inp.value='';
+  inp.onchange=function(){
+    const f=inp.files && inp.files[0];
+    if(!f) return;
+    const r=new FileReader();
+    r.onload=function(){
+      let okd=false;
+      try{ okd=applySave(JSON.parse(r.result)); }catch(e){ okd=false; }
+      saveNote = okd ? 'Save loaded. Chapters unlocked: '+unlocked : 'That file is not a SELDA save.';
+      if(okd) saveGame();
+      if(state==='options') showOptions();
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
 const $=id=>document.getElementById(id);
 
 function screenOn(id){
@@ -740,8 +800,8 @@ function updatePlayer(){
     if(p.heal===0 && p.recoil<=0){
       if(L&&!R){ p.vx-=0.98; p.face=-1; }
       else if(R&&!L){ p.vx+=0.98; p.face=1; }
-      else p.vx*=0.70;
-    } else p.vx*=0.86;
+      else { p.vx*=0.70; if(Math.abs(p.vx)<0.14) p.vx=0; }
+    } else { p.vx*=0.86; if(Math.abs(p.vx)<0.14) p.vx=0; }
     p.vx=clamp(p.vx,-4.3,4.3);
     p.vy=Math.min(p.vy+GRAV,MAXFALL);
   }
@@ -881,6 +941,7 @@ function finishLevel(){
   if(state!=='play') return;
   state='clear'; SFX.gate(); runTime+=levelTime;
   unlocked=Math.max(unlocked, world.index+2);
+  saveGame();
   if(world.index>=LEVELS.length-1){ showEnding(); return; }
   screenOn('scr-clear');
   $('clearHead').textContent = LEVELS[world.index].boss ? 'Boss Felled' : 'Path Cleared';
@@ -1432,15 +1493,21 @@ function capName(v){ return v===0 ? 'Unlimited' : v+' fps'; }
 function showOptions(){
   state='options'; screenOn('scr-options');
   const hz = detectedHz ? detectedHz+' Hz' : 'measuring...';
-  $('optInfo').textContent = 'Your screen: '+hz+'   |   drawing at '+liveFps+' fps   |   the game always runs at 60 steps a second';
+  $('optInfo').innerHTML = 'Your screen: '+hz+' &nbsp;|&nbsp; drawing at '+liveFps+
+    ' fps &nbsp;|&nbsp; the game always runs at 60 steps a second<br>Chapters unlocked: '+
+    unlocked+' of '+LEVELS.length+(saveNote?' &nbsp;|&nbsp; '+saveNote:'');
+  saveNote='';
   buildMenu('optmenu',[
     ['Frame cap: '+capName(OPT.fpsCap), ()=>{
-      OPT.fpsCap=FPSCAPS[(FPSCAPS.indexOf(OPT.fpsCap)+1)%FPSCAPS.length]; showOptions(); }],
+      OPT.fpsCap=FPSCAPS[(FPSCAPS.indexOf(OPT.fpsCap)+1)%FPSCAPS.length]; saveGame(); showOptions(); }],
     ['Music: '+MUSIC_NAMES[OPT.musicVol], ()=>{
-      OPT.musicVol=(OPT.musicVol+1)%MUSIC_VOLS.length; musicInit(); musicRamp(); showOptions(); }],
-    ['Show fps: '+(OPT.showFps?'On':'Off'), ()=>{ OPT.showFps=!OPT.showFps; showOptions(); }],
-    ['Screen shake: '+(OPT.shake?'On':'Off'), ()=>{ OPT.shake=!OPT.shake; showOptions(); }],
-    ['Sound: '+(OPT.sound?'On':'Off'), ()=>{ OPT.sound=!OPT.sound; showOptions(); }],
+      OPT.musicVol=(OPT.musicVol+1)%MUSIC_VOLS.length; musicInit(); musicRamp(); saveGame(); showOptions(); }],
+    ['Show fps: '+(OPT.showFps?'On':'Off'), ()=>{ OPT.showFps=!OPT.showFps; saveGame(); showOptions(); }],
+    ['Screen shake: '+(OPT.shake?'On':'Off'), ()=>{ OPT.shake=!OPT.shake; saveGame(); showOptions(); }],
+    ['Sound: '+(OPT.sound?'On':'Off'), ()=>{ OPT.sound=!OPT.sound; saveGame(); showOptions(); }],
+    ['Download save', ()=>{ downloadSave(); showOptions(); }],
+    ['Load save file', pickSaveFile],
+    ['Erase save', ()=>{ eraseGame(); showOptions(); }],
     ['Back', toTitle]
   ]);
 }
@@ -1556,6 +1623,7 @@ function interpApply(a){
   for(const p of parts) add(p);
   world._camx=world.camx;
   world.camx=camPrev+(world.camx-camPrev)*a;
+  if(PIXEL_SNAP) world.camx=Math.round(world.camx);
   interpOn=true;
 }
 
@@ -1626,6 +1694,7 @@ function step(now){
 
 world.map=LEVELS[0].map.map(r=>r.split(''));
 world.cols=LEVELS[0].map[0].length; world.w=world.cols*TILE; world.tint=LEVELS[0].tint;
+loadGame();
 buildTouch();
 toTitle();
 addEventListener('pointerdown',()=>{ ac(); musicInit(); musicRamp(); },{once:true});
