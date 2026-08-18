@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SELDA</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" width="960" height="540"></canvas>
+
+  <div class="screen on" id="scr-title">
+    <svg class="crest" viewBox="0 0 600 120" fill="none" aria-hidden="true">
+      <g stroke="#ddd8cf" stroke-width="2.1" stroke-linecap="round" fill="none" opacity=".95">
+        <path d="M300 104 C300 88 292 78 278 74 C258 68 238 76 232 90 C228 100 234 108 242 106 C249 104 250 96 244 93"/>
+        <path d="M300 104 C300 88 308 78 322 74 C342 68 362 76 368 90 C372 100 366 108 358 106 C351 104 350 96 356 93"/>
+        <path d="M232 82 C200 66 170 70 150 82 C132 93 134 108 146 108 C154 108 158 100 152 96"/>
+        <path d="M368 82 C400 66 430 70 450 82 C468 93 466 108 454 108 C446 108 442 100 448 96"/>
+        <path d="M150 80 C120 62 86 66 68 80 C54 91 58 104 70 103 C78 102 80 94 74 91"/>
+        <path d="M450 80 C480 62 514 66 532 80 C546 91 542 104 530 103 C522 102 520 94 526 91"/>
+        <path d="M258 60 C270 46 288 40 300 40 C312 40 330 46 342 60"/>
+        <path d="M258 60 C244 50 228 48 216 52"/>
+        <path d="M342 60 C356 50 372 48 384 52"/>
+      </g>
+      <g fill="#ddd8cf" opacity=".95">
+        <path d="M300 12 L312 44 L300 74 L288 44 Z"/>
+        <circle cx="300" cy="44" r="6.5" fill="#04050a"/>
+        <path d="M300 50 L305 74 L295 74 Z" fill="#ddd8cf"/>
+      </g>
+      <g stroke="#ddd8cf" stroke-width="2" fill="none" opacity=".8">
+        <path d="M288 30 C276 22 262 24 256 34"/>
+        <path d="M312 30 C324 22 338 24 344 34"/>
+      </g>
+    </svg>
+    <h1 class="title">SELDA</h1>
+    <svg class="crest lower" viewBox="0 0 600 120" fill="none" aria-hidden="true">
+      <g stroke="#ddd8cf" stroke-width="2.1" stroke-linecap="round" fill="none" opacity=".7">
+        <path d="M232 82 C200 66 170 70 150 82 C132 93 134 108 146 108 C154 108 158 100 152 96"/>
+        <path d="M368 82 C400 66 430 70 450 82 C468 93 466 108 454 108 C446 108 442 100 448 96"/>
+        <path d="M232 88 C258 76 342 76 368 88"/>
+        <path d="M150 80 C120 62 86 66 68 80 C54 91 58 104 70 103 C78 102 80 94 74 91"/>
+        <path d="M450 80 C480 62 514 66 532 80 C546 91 542 104 530 103 C522 102 520 94 526 91"/>
+      </g>
+    </svg>
+    <div class="sub">They took her family. She kept the lantern.</div>
+    <nav id="mainmenu"></nav>
+    <div class="stamp">1.0.0</div>
+    <div class="maker">made by pester</div>
+  </div>
+
+  <div class="screen" id="scr-story">
+    <div class="panel">
+      <h2 id="storyHead">The Taking</h2>
+      <div id="storyBody"></div>
+      <div class="hint">Press Enter to continue &nbsp;·&nbsp; Esc to go back</div>
+    </div>
+  </div>
+
+  <div class="screen" id="scr-controls">
+    <div class="panel">
+      <h2>Controls</h2>
+      <div class="keys">
+        <b>&larr; &rarr; / A D</b><span>Move</span>
+        <b>Space / W / &uarr;</b><span>Jump &nbsp;(hold higher)</span>
+        <b>J / Z</b><span>Slash</span>
+        <b>&darr; + Slash</b><span>Pogo off enemies</span>
+        <b>K / X</b><span>Dash</span>
+        <b>L / C</b><span>Heal (hold, costs light)</span>
+        <b>Esc / P</b><span>Pause</span>
+      </div>
+      <div class="hint">Esc to go back</div>
+    </div>
+  </div>
+
+  <div class="screen" id="scr-levels">
+    <div class="panel" style="max-width:100%">
+      <h2>The Descent</h2>
+      <div class="grid" id="lvlgrid"></div>
+      <div class="hint">Esc to go back</div>
+    </div>
+  </div>
+
+  <div class="screen" id="scr-pause" style="background:rgba(4,5,10,.86)">
+    <div class="panel">
+      <h2>Paused</h2>
+      <nav id="pausemenu"></nav>
+    </div>
+  </div>
+
+  <div class="screen" id="scr-dead" style="background:rgba(4,5,10,.9)">
+    <div class="panel">
+      <h2 style="color:#d9a7a3">The lantern goes out</h2>
+      <p class="quiet" id="deathLine">But it is not the last light.</p>
+      <nav id="deadmenu"></nav>
+    </div>
+  </div>
+
+  <div class="screen" id="scr-clear" style="background:rgba(4,5,10,.86)">
+    <div class="panel">
+      <h2 id="clearHead">Path Cleared</h2>
+      <p id="clearLine" class="quiet"></p>
+      <div class="hint">Press Enter to go deeper</div>
+    </div>
+  </div>
+
+  <div class="screen" id="scr-end">
+    <div class="panel">
+      <h2>Home</h2>
+      <div id="endBody"></div>
+      <div class="hint">Press Enter to return to the title</div>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div class="masks" id="masks"></div>
+    <canvas id="soulring" width="120" height="120"></canvas>
+    <div class="bossbar" id="bossbar">
+      <div class="name" id="bossname">MR COOL</div>
+      <div class="track"><div class="fill" id="bossfill"></div></div>
+    </div>
+    <div class="lvltag" id="lvltag" style="opacity:0">
+      <div class="a" id="lvltagA"></div>
+      <div class="b" id="lvltagB"></div>
+    </div>
+  </div>
+
+  <div id="touch"></div>
+  <div class="fade" id="fade"></div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
