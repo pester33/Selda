@@ -78,7 +78,7 @@ const LEVELS = [
 ".............====...............................",
 "......................................w.........",
 "...........w..........................=====.....",
-"..P.^^.............^^..........^^.........^^..D.",
+"..P................^^..........^^.............D.",
 "#########################..#####################",
 "#########################..#####################",
 "#########################..#####################"]},
@@ -93,7 +93,7 @@ const LEVELS = [
 ".............................====...................",
 "...............h....................................",
 "......w...................w.........................",
-"..P...^^................^^................^^......D.",
+"..P.....................^^................^^......D.",
 "###############...###############...################",
 "###############...###############...################",
 "###############...###############...################"]},
@@ -108,7 +108,7 @@ const LEVELS = [
 "........====....................====....................",
 "..............................h.........................",
 "......t...............t.....................t...........",
-"..P.^.....w....................w..................^...D.",
+"..P.......w....................w......................D.",
 "##########...########...#######...########...###########",
 "##########...########...#######...########...###########",
 "##########...########...#######...########...###########"]},
@@ -138,7 +138,7 @@ const LEVELS = [
 "........................................................",
 "...........h............................h...............",
 "......w...........w..........w.................w........",
-"..P..^..............^^..............^^.............^..D.",
+"..P.................^^..............^^................D.",
 "############...#############...#############...#########",
 "############...#############...#############...#########",
 "############...#############...#############...#########"]},
@@ -153,7 +153,7 @@ const LEVELS = [
 "........t................t....................t.....t.......",
 ".........................h..................................",
 ".........w.............w.............w..............w.......",
-"..P..^..............^.............^...............^^......D.",
+"..P.................^.............^...............^^......D.",
 "############...###########...############...################",
 "############...###########...############...################",
 "############...###########...############...################"]},
@@ -183,7 +183,7 @@ const LEVELS = [
 "..........t...........t...........t...........t......====...",
 "...........h.........................................h......",
 "....w...........w............w...........w...........w......",
-"..P..^.............^...........^............^.............D.",
+"..P................^...........^............^.............D.",
 "############...#########...##########...#########...########",
 "############...#########...##########...#########...########",
 "############...#########...##########...#########...########"]},
@@ -198,7 +198,7 @@ const LEVELS = [
 "........t...........t............t.............t............",
 ".....................h.........................h............",
 "...w...........w............w.............w...........w.....",
-"..P.^............^.............^............^.............D.",
+"..P..............^.............^............^.............D.",
 "##########...##########...###########...##########...#######",
 "##########...##########...###########...##########...#######",
 "##########...##########...###########...##########...#######"]},
@@ -577,9 +577,45 @@ function updateBoss(b){
   if(airborne){}
 }
 
+const OPT={ fpsCap:0, shake:true, sound:true, showFps:false, musicVol:2 };
+
+const MUSIC_FILE='music.mp3';
+const MUSIC_VOLS=[0,0.2,0.45,0.7,1.0];
+const MUSIC_NAMES=['Off','Quiet','Normal','Loud','Full'];
+let music=null, musicWanted=false, musicFade=null;
+
+function musicInit(){
+  if(music||typeof Audio==='undefined') return;
+  try{
+    music=new Audio(MUSIC_FILE);
+    music.loop=true;
+    music.volume=0;
+    music.addEventListener('error',function(){ music=null; });
+  }catch(e){ music=null; }
+}
+function musicTarget(){ return musicWanted ? MUSIC_VOLS[OPT.musicVol] : 0; }
+function musicRamp(){
+  if(!music) return;
+  if(musicFade) clearInterval(musicFade);
+  musicFade=setInterval(function(){
+    if(!music){ clearInterval(musicFade); musicFade=null; return; }
+    const t=musicTarget(), d=t-music.volume;
+    if(Math.abs(d)<0.03){
+      music.volume=t;
+      if(t===0) music.pause();
+      clearInterval(musicFade); musicFade=null; return;
+    }
+    music.volume=Math.max(0,Math.min(1,music.volume+(d>0?0.03:-0.03)));
+  },30);
+  if(musicTarget()>0 && music.paused){ const p=music.play(); if(p&&p.catch) p.catch(function(){}); }
+}
+function musicSet(on){ musicWanted=on; musicInit(); musicRamp(); }
+let detectedHz=0, liveFps=0;
+
 let AC=null;
 function ac(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return AC; }
 function blip(freq,dur,type,vol,slide){
+  if(!OPT.sound) return;
   const a=ac(); if(!a) return;
   if(a.state==='suspended') a.resume();
   const o=a.createOscillator(), g=a.createGain();
@@ -590,6 +626,7 @@ function blip(freq,dur,type,vol,slide){
   o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur+0.02);
 }
 function noise(dur,vol){
+  if(!OPT.sound) return;
   const a=ac(); if(!a) return;
   const n=a.sampleRate*dur, buf=a.createBuffer(1,n,a.sampleRate), d=buf.getChannelData(0);
   for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
@@ -837,6 +874,14 @@ for(let i=0;i<80;i++) motes.push({x:Math.random()*W,y:Math.random()*H,s:rnd(0.4,
 
 function srnd(i){ const x=Math.sin(i*127.1+(world.index+1)*311.7)*43758.5453; return x-Math.floor(x); }
 
+function mixHex(hex,other,t){
+  const a=parseInt(hex.slice(1),16), b=parseInt(other.slice(1),16);
+  const r=Math.round((((a>>16)&255)*(1-t))+(((b>>16)&255)*t));
+  const g=Math.round((((a>>8)&255)*(1-t))+(((b>>8)&255)*t));
+  const c=Math.round(((a&255)*(1-t))+((b&255)*t));
+  return 'rgb('+r+','+g+','+c+')';
+}
+
 function shade(hex,amt){
   const n=parseInt(hex.slice(1),16);
   let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
@@ -846,9 +891,9 @@ function shade(hex,amt){
 
 function drawBG(){
   const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0, shade(world.tint,0.30));
-  g.addColorStop(0.45, shade(world.tint,0.85));
-  g.addColorStop(1, shade(world.tint,0.32));
+  g.addColorStop(0, shade(world.tint,0.55));
+  g.addColorStop(0.45, shade(world.tint,1.30));
+  g.addColorStop(1, shade(world.tint,0.60));
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
   const px=(player?player.x+player.w/2-world.camx:W/2), py=(player?player.y+YOFF:H/2);
@@ -858,7 +903,7 @@ function drawBG(){
   ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
 
   for(let layer=0;layer<2;layer++){
-    const par=layer===0?0.14:0.32, base=layer===0?0.42:0.62;
+    const par=layer===0?0.14:0.32, base=layer===0?0.72:1.05;
     ctx.fillStyle=shade(world.tint, base);
     for(let i=0;i<34;i++){
       const bx=i*230+srnd(i+layer*50)*120;
@@ -871,7 +916,7 @@ function drawBG(){
   }
 
   const fg=ctx.createLinearGradient(0,H*0.55,0,H);
-  fg.addColorStop(0,'rgba(0,0,0,0)'); fg.addColorStop(1,shade(world.tint,0.55));
+  fg.addColorStop(0,'rgba(0,0,0,0)'); fg.addColorStop(1,shade(world.tint,0.75));
   ctx.fillStyle=fg; ctx.fillRect(0,H*0.55,W,H*0.45);
 }
 
@@ -889,7 +934,7 @@ function drawMotes(){
 function drawTiles(){
   const c0=Math.max(0,Math.floor(world.camx/TILE)-1);
   const c1=Math.min(world.cols-1,Math.ceil((world.camx+W)/TILE));
-  const rock=shade(world.tint,0.55), edge=shade(world.tint,1.35), deep=shade(world.tint,0.30);
+  const rock=mixHex(world.tint,'#8496ae',0.40), edge=mixHex(world.tint,'#e2edf7',0.72), deep=mixHex(world.tint,'#000000',0.42);
   for(let y=0;y<ROWS;y++) for(let x=c0;x<=c1;x++){
     const c=world.map[y][x]; if(c==='.') continue;
     const px=x*TILE-world.camx, py=y*TILE+YOFF;
@@ -902,11 +947,11 @@ function drawTiles(){
         ctx.fillStyle=edge; ctx.fillRect(px,py,TILE,3);
         ctx.globalAlpha=0.35; ctx.fillRect(px,py+3,TILE,2); ctx.globalAlpha=1;
       }
-      ctx.strokeStyle='rgba(0,0,0,0.30)'; ctx.lineWidth=1;
+      ctx.strokeStyle='rgba(0,0,0,0.22)'; ctx.lineWidth=1;
       ctx.strokeRect(px+0.5,py+0.5,TILE-1,TILE-1);
     }
     else if(c==='='){
-      ctx.fillStyle=shade(world.tint,0.75); ctx.fillRect(px,py,TILE,9);
+      ctx.fillStyle=mixHex(world.tint,'#9fb0c6',0.52); ctx.fillRect(px,py,TILE,9);
       ctx.fillStyle=edge; ctx.fillRect(px,py,TILE,2.5);
       ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(px,py+9,TILE,3);
     }
@@ -1209,8 +1254,8 @@ function drawPlayer(){
 }
 
 function drawVignette(){
-  const g=ctx.createRadialGradient(W/2,H/2,H*0.35,W/2,H/2,H*0.92);
-  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.72)');
+  const g=ctx.createRadialGradient(W/2,H/2,H*0.45,W/2,H/2,H*1.0);
+  g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.55)');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
   if(player && player.hp===1 && state==='play'){
     ctx.globalAlpha=0.14+0.10*Math.sin(frame*0.09);
@@ -1225,7 +1270,7 @@ function render(){
   if(state==='title'||state==='story'||state==='controls'||state==='levels'||state==='end'){
     drawMotes(); drawVignette(); return;
   }
-  const sh=world.shake;
+  const sh=OPT.shake?world.shake:0;
   ctx.save();
   if(sh>0) ctx.translate(rnd(-sh,sh),rnd(-sh,sh));
   drawTiles();
@@ -1241,6 +1286,13 @@ function render(){
   drawMotes();
   drawVignette();
   drawSpriteDebug();
+  if(OPT.showFps){
+    ctx.save();
+    ctx.font='12px monospace'; ctx.textAlign='right';
+    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(W-96,8,88,18);
+    ctx.fillStyle='#8fd8e8'; ctx.fillText(liveFps+' fps',W-14,21);
+    ctx.restore();
+  }
 }
 
 function updateShots(){
@@ -1315,14 +1367,14 @@ function buildMenu(id,items){
 }
 
 const STORY = [
-  "Selda lit the lantern every night so her family could find their way home.",
-  "The night the Warden came, the light was still burning. It did not stop him. Her mother, her father, her small brother \u2014 taken down the iron stair, into the dark below the house.",
-  "They left her the lantern. They should not have."
+  "Polo kept the light burning every night, so his family could find the way home.",
+  "The night the Warden came, the light was still burning. It did not stop him. His mother, his father, his small brother \u2014 taken down the iron stair, into the dark below the house.",
+  "They left Polo the light. They should not have."
 ];
 const ENDING = [
   "The Awakened Warden breaks apart, and the key falls out of him \u2014 warm, and far too small for all it kept shut.",
   "Ten doors open. Three faces turn toward the light.",
-  "Selda blows the lantern out. She does not need it to find the way home."
+  "Polo lets the light go out. He does not need it to find the way home."
 ];
 
 function toTitle(){
@@ -1331,6 +1383,7 @@ function toTitle(){
     ['Start Game', ()=>showStory(false)],
     ['Chapters', showLevels],
     ['Controls', ()=>{ state='controls'; screenOn('scr-controls'); }],
+    ['Options', showOptions],
     ['The Taking', ()=>showStory(true)],
     ['Quit Game', quitGame]
   ]);
@@ -1347,9 +1400,28 @@ function showEnding(){
 }
 function quitGame(){
   storyStarts=false; state='story'; screenOn('scr-story');
-  $('storyHead').textContent='The lantern rests';
-  $('storyBody').innerHTML='<p>Close this tab whenever you are ready.</p><p class="quiet">Selda will wait in the dark. She is used to it.</p>';
+  $('storyHead').textContent='The light rests';
+  $('storyBody').innerHTML='<p>Close this tab whenever you are ready.</p><p class="quiet">Polo will wait in the dark. He is used to it.</p>';
 }
+const FPSCAPS=[0,60,120,144,240];
+function capName(v){ return v===0 ? 'Unlimited' : v+' fps'; }
+
+function showOptions(){
+  state='options'; screenOn('scr-options');
+  const hz = detectedHz ? detectedHz+' Hz' : 'measuring...';
+  $('optInfo').textContent = 'Your screen: '+hz+'   |   drawing at '+liveFps+' fps   |   the game always runs at 60 steps a second';
+  buildMenu('optmenu',[
+    ['Frame cap: '+capName(OPT.fpsCap), ()=>{
+      OPT.fpsCap=FPSCAPS[(FPSCAPS.indexOf(OPT.fpsCap)+1)%FPSCAPS.length]; showOptions(); }],
+    ['Music: '+MUSIC_NAMES[OPT.musicVol], ()=>{
+      OPT.musicVol=(OPT.musicVol+1)%MUSIC_VOLS.length; musicInit(); musicRamp(); showOptions(); }],
+    ['Show fps: '+(OPT.showFps?'On':'Off'), ()=>{ OPT.showFps=!OPT.showFps; showOptions(); }],
+    ['Screen shake: '+(OPT.shake?'On':'Off'), ()=>{ OPT.shake=!OPT.shake; showOptions(); }],
+    ['Sound: '+(OPT.sound?'On':'Off'), ()=>{ OPT.sound=!OPT.sound; showOptions(); }],
+    ['Back', toTitle]
+  ]);
+}
+
 function showLevels(){
   state='levels'; screenOn('scr-levels');
   const g=$('lvlgrid'); g.innerHTML='';
@@ -1387,9 +1459,10 @@ const UI={ key(e){
     return;
   }
   if(state==='controls'||state==='levels'){ if(c==='Escape'||c==='Enter') toTitle(); return; }
+  if(state==='options' && c==='Escape'){ toTitle(); return; }
   if(state==='clear'){ if(c==='Enter'||c==='Space') nextLevel(); return; }
   if(state==='end'){ if(c==='Enter'||c==='Space') toTitle(); return; }
-  if(menuEl && menuActions.length && (state==='title'||state==='pause'||state==='dead')){
+  if(menuEl && menuActions.length && (state==='title'||state==='pause'||state==='dead'||state==='options')){
     if(c==='ArrowDown'||c==='KeyS'){ menuIdx=(menuIdx+1)%menuActions.length; markMenu(); SFX.ui(); }
     else if(c==='ArrowUp'||c==='KeyW'){ menuIdx=(menuIdx-1+menuActions.length)%menuActions.length; markMenu(); SFX.ui(); }
     else if(c==='Enter'||c==='Space'){ SFX.ui(); menuActions[menuIdx](); }
@@ -1424,10 +1497,11 @@ function buildTouch(){
   wrap.appendChild(pb);
 }
 const _screenOn=screenOn;
-screenOn=function(id){ _screenOn(id); $('touch').classList.toggle('on', id===null && isTouch); };
+screenOn=function(id){ _screenOn(id); $('touch').classList.toggle('on', id===null && isTouch); musicSet(id!==null); };
 
 let camSmooth=0;
-function step(){
+
+function tick(){
   frame++;
   if(state==='play' && player){
     hazards.length=0;
@@ -1446,15 +1520,45 @@ function step(){
     updateParts();
   }
   clearTaps();
-  render();
+}
+
+const STEP=1000/60;
+let acc=0, lastT=0, lastRender=0, hzSamples=[], fpsCount=0, fpsClock=0;
+
+function step(now){
   requestAnimationFrame(step);
+  if(!now) now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  if(!lastT){ lastT=now; lastRender=now; fpsClock=now; return; }
+  let dt=now-lastT; lastT=now;
+
+  if(dt>0 && dt<100 && hzSamples.length<120){
+    hzSamples.push(dt);
+    if(hzSamples.length===120){
+      const srt=hzSamples.slice().sort(function(a,b){return a-b;});
+      detectedHz=Math.round(1000/srt[60]);
+    }
+  }
+
+  if(dt>250) dt=250;
+  acc+=dt;
+  let n=0;
+  while(acc>=STEP && n<5){ tick(); acc-=STEP; n++; }
+  if(n>=5) acc=0;
+
+  if(OPT.fpsCap>0 && now-lastRender < (1000/OPT.fpsCap)-0.6) return;
+  lastRender=now;
+  render();
+
+  fpsCount++;
+  if(now-fpsClock>=500){ liveFps=Math.round(fpsCount*1000/(now-fpsClock)); fpsCount=0; fpsClock=now; }
 }
 
 world.map=LEVELS[0].map.map(r=>r.split(''));
 world.cols=LEVELS[0].map[0].length; world.w=world.cols*TILE; world.tint=LEVELS[0].tint;
 buildTouch();
 toTitle();
-addEventListener('pointerdown',()=>{ ac(); },{once:true});
+addEventListener('pointerdown',()=>{ ac(); musicInit(); musicRamp(); },{once:true});
+addEventListener('keydown',()=>{ musicInit(); musicRamp(); },{once:true});
 addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; if(state==='play') pause(); });
 requestAnimationFrame(step);
 
