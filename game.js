@@ -653,6 +653,8 @@ const SFX={
 let state='title', unlocked=1, tagT=0, clearT=0, frame=0;
 let hitstop=0, levelTime=0, levelHits=0, runTime=0, look=0;
 
+const DEV={ god:false, infLight:false, boxes:false, open:false };
+
 const SAVE_KEY='selda_save_v1';
 let saveNote='';
 
@@ -754,6 +756,7 @@ function loadLevel(i,keepHp){
 function hurtPlayer(dmg,srcX){
   const p=player;
   if(p.inv>0||p.dead||state!=='play') return;
+  if(DEV.god){ p.inv=20; return; }
   p.hp-=dmg; p.inv=78; p.recoil=15; p.heal=0; p.dash=0;
   p.vx=((srcX==null?p.x:srcX)<p.x+p.w/2?1:-1)*5.6; p.vy=-4.2;
   world.shake=10; hitstop=8; levelHits++; burst(p.x+p.w/2,p.y+p.h/2,14,'#e8f2ff',3.6);
@@ -891,6 +894,7 @@ function attackBox(){
 }
 
 function gainSoul(n){ player.soul=Math.min(99,player.soul+n); }
+function devTick(){ if(DEV.infLight && player) player.soul=99; }
 
 function combat(){
   const p=player, box=attackBox();
@@ -1436,6 +1440,25 @@ function drawFog(){
   ctx.restore();
 }
 
+function drawBoxes(){
+  if(!DEV.boxes) return;
+  ctx.save(); ctx.lineWidth=1;
+  const box=(o,col)=>{ ctx.strokeStyle=col; ctx.strokeRect(Math.round(o.x-world.camx)+0.5,Math.round(o.y+YOFF)+0.5,o.w-1,o.h-1); };
+  for(const e of enemies) if(e.hp>0) box(e,'#7cff9a');
+  if(boss && !boss.dead) box(boss,'#ff7a6f');
+  for(const h of hazards) box(h,'#ffb347');
+  for(const w of waves) box({x:w.x-w.w/2,y:w.y,w:w.w,h:w.h},'#ffb347');
+  for(const o of orbs){
+    ctx.strokeStyle='#7cc6ff';
+    ctx.beginPath(); ctx.arc(Math.round(o.x-world.camx),Math.round(o.y+YOFF),o.r+17,0,6.283); ctx.stroke();
+  }
+  if(player){
+    box(player,'#8fd8e8');
+    const ab=attackBox(); if(ab) box(ab,'#ffffff');
+  }
+  ctx.restore();
+}
+
 function drawVignette(){
   const g=ctx.createRadialGradient(W/2,H/2,H*0.45,W/2,H/2,H*1.0);
   g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,0.55)');
@@ -1467,6 +1490,7 @@ function render(){
   if(player) drawPlayer();
   drawParts();
   ctx.restore();
+  drawBoxes();
   interpRestore();
   drawFog();
   drawMotes();
@@ -1636,14 +1660,68 @@ function pause(){
   buildMenu('pausemenu',[
     ['Resume', resume],
     ['Restart Chapter', ()=>fadeOut(()=>loadLevel(world.index))],
+    ['Admin Panel', adminOpen],
     ['Back to Title', ()=>fadeOut(toTitle)]
   ]);
 }
 function resume(){ state='play'; screenOn(null); }
 
+function adminBtn(label,fn,active){
+  const b=document.createElement('button');
+  b.type='button'; b.textContent=label;
+  if(active) b.className='act';
+  b.addEventListener('click',function(ev){ ev.stopPropagation(); fn(); buildAdmin(); });
+  return b;
+}
+function adminSep(){ const d=document.createElement('div'); d.className='sep'; return d; }
+
+function buildAdmin(){
+  const box=$('abody');
+  box.innerHTML='';
+  const lv=world.index+1;
+  box.appendChild(adminBtn('God mode  '+(DEV.god?'ON':'off'), function(){ DEV.god=!DEV.god; }, DEV.god));
+  box.appendChild(adminBtn('Infinite light  '+(DEV.infLight?'ON':'off'), function(){ DEV.infLight=!DEV.infLight; }, DEV.infLight));
+  box.appendChild(adminBtn('Show hitboxes  '+(DEV.boxes?'ON':'off'), function(){ DEV.boxes=!DEV.boxes; }, DEV.boxes));
+  box.appendChild(adminSep());
+  box.appendChild(adminBtn('Heal to full', function(){ if(player){ player.hp=player.maxHp; SFX.heal(); } }));
+  box.appendChild(adminBtn('Fill light', function(){ if(player) player.soul=99; }));
+  box.appendChild(adminBtn('Clear enemies', function(){
+    for(const e of enemies){ if(e.hp>0){ burst(e.x+e.w/2,e.y+e.h/2,14,'#cdd8e6',4); e.hp=0; } } }));
+  box.appendChild(adminBtn('Kill boss', function(){
+    if(boss && !boss.dead){ boss.hp=0; boss.dead=true; world.shake=18; } }));
+  box.appendChild(adminBtn('Warp to gate', function(){
+    if(player && gate){ player.x=gate.x-10; player.y=gate.y; player.vx=0; player.vy=0; } }));
+  box.appendChild(adminSep());
+  box.appendChild(adminBtn('Finish chapter '+lv, function(){
+    adminClose();
+    if(state==='pause'){ state='play'; screenOn(null); }
+    finishLevel(); }));
+  box.appendChild(adminBtn('Restart chapter', function(){ adminClose(); loadLevel(world.index); }));
+  box.appendChild(adminBtn('Previous chapter', function(){
+    if(world.index>0){ adminClose(); loadLevel(world.index-1); } }));
+  box.appendChild(adminBtn('Next chapter', function(){
+    if(world.index<LEVELS.length-1){ adminClose(); loadLevel(world.index+1); } }));
+  box.appendChild(adminSep());
+  box.appendChild(adminBtn('Unlock all chapters', function(){ unlocked=LEVELS.length; saveGame(); }));
+  box.appendChild(adminBtn('Save now', function(){ saveGame(); }));
+  box.appendChild(adminBtn('Download data', downloadSave));
+  box.appendChild(adminBtn('Load data from file', pickSaveFile));
+  box.appendChild(adminBtn('Erase save', function(){ eraseGame(); }));
+  box.appendChild(adminSep());
+  box.appendChild(adminBtn('Close panel', adminClose));
+}
+
+function adminOpen(){
+  DEV.open=true; buildAdmin(); $('admin').classList.add('on');
+  if(state==='play') pause();
+}
+function adminClose(){ DEV.open=false; $('admin').classList.remove('on'); }
+function adminToggle(){ DEV.open ? adminClose() : adminOpen(); }
+
 const UI={ key(e){
   const c=e.code;
   ac();
+  if(c==='Backquote'||c==='F2'){ adminToggle(); return; }
   if(state==='play'){ if(c==='Escape'||c==='KeyP') pause(); return; }
   if(state==='pause'){ if(c==='Escape'||c==='KeyP'){ resume(); return; } }
   if(state==='story'){
@@ -1744,6 +1822,7 @@ function tick(){
     snapshot();
     hazards.length=0;
     levelTime++;
+    devTick();
     updatePlayer();
     for(const e of enemies) if(e.hp>0) updateEnemy(e);
     if(boss) updateBoss(boss);
