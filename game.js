@@ -50,6 +50,7 @@ function drawCube(p,cx,cy){
   const s=SPRITE_SIZE;
   ctx.save();
   ctx.translate(cx,cy);
+  if (p.gravDir === -1) ctx.scale(1, -1);
   ctx.rotate(p.rot);
   if(IMG.player.ok){
     ctx.imageSmoothingEnabled=!SPRITE_PIXEL;
@@ -69,14 +70,14 @@ function drawCube(p,cx,cy){
 
 const LEVELS = [
 { n:"The Hollow Home", sub:"Where they were taken", tint:"#16202f", boss:null, map:[
-"................................................",
-"................................................",
-"................................................",
-"...............................====.............",
-"......................====......................",
+"...................................#########....",
+"...................................#.......#....",
+"...................................#...G...#....",
+"...............................====#.......#....",
+"......................====.........#########....",
 "......................h.........................",
 ".............====...............................",
-"......................................w.........",
+".......Y.....................R........w.........",
 "...........w..........................=====.....",
 "..P................^^..........^^.............D.",
 "#########################..#####################",
@@ -277,14 +278,14 @@ function spikeAt(cx,cy){
 }
 
 let player=null, enemies=[], shots=[], parts=[], waves=[], hazards=[], boss=null;
-let pickups=[], gate=null;
+let pickups=[], gate=null, orbs=[];
 
 function makePlayer(x,y,keepHp){
   const hp = keepHp!=null?keepHp:5;
   return {x:x,y:y,w:30,h:30,vx:0,vy:0,face:1,onGround:false,rot:0,spinDir:1,air:false,
     hp:hp,maxHp:5,soul:0,inv:0,atk:0,atkDir:'side',atkHitDone:false,
     dash:0,dashCd:0,heal:0,coyote:0,buf:0,anim:0,dropping:0,
-    safeX:x,safeY:y,safeT:0,dead:false,recoil:0,lamp:0};
+    safeX:x,safeY:y,safeT:0,dead:false,recoil:0,lamp:0, gravDir: 1, safeGravDir: 1};
 }
 
 function moveEnt(e){
@@ -300,11 +301,21 @@ function moveEnt(e){
   e.y += e.vy; e.onGround=false;
   x0=Math.floor(e.x/TILE); x1=Math.floor((e.x+e.w-1)/TILE);
   y0=Math.floor(e.y/TILE); y1=Math.floor((e.y+e.h-1)/TILE);
+  let gDir = e.gravDir || 1;
+  
   for(let cx=x0;cx<=x1;cx++){
-    if(e.vy>0 && solidAt(cx,y1)){ e.y=y1*TILE-e.h; e.vy=0; e.onGround=true; break; }
-    if(e.vy<0 && solidAt(cx,y0)){ e.y=(y0+1)*TILE; e.vy=0.5; break; }
+    if(e.vy>0 && solidAt(cx,y1)){
+      e.y=y1*TILE-e.h; e.vy=0; 
+      if (gDir===1) e.onGround=true; 
+      break; 
+    }
+    if(e.vy<0 && solidAt(cx,y0)){ 
+      e.y=(y0+1)*TILE; 
+      if (gDir===-1) { e.vy=0; e.onGround=true; } else { e.vy=0.5; }
+      break; 
+    }
   }
-  if(e.vy>0 && !e.dropping && !e.onGround){
+  if(gDir===1 && e.vy>0 && !e.dropping && !e.onGround){
     const ly=Math.floor((e.y+e.h)/TILE);
     for(let cx=x0;cx<=x1;cx++){
       if(ledgeAt(cx,ly) && prevBottom<=ly*TILE+4){ e.y=ly*TILE-e.h; e.vy=0; e.onGround=true; break; }
@@ -609,7 +620,6 @@ function musicRamp(){
   },30);
   if(musicTarget()>0 && music.paused){ const p=music.play(); if(p&&p.catch) p.catch(function(){}); }
 }
-function musicSet(on){ musicWanted=on; musicInit(); musicRamp(); }
 let detectedHz=0, liveFps=0;
 
 let AC=null;
@@ -668,7 +678,7 @@ function loadLevel(i,keepHp){
   world.cols=L.map[0].length;
   world.w=world.cols*TILE;
   world.tint=L.tint; world.index=i; world.camx=0; world.shake=0;
-  enemies=[];shots=[];parts=[];waves=[];hazards=[];pickups=[];boss=null;gate=null;
+  enemies=[];shots=[];parts=[];waves=[];hazards=[];pickups=[];boss=null;gate=null;orbs=[];
   let px=80,py=100;
   for(let y=0;y<ROWS;y++) for(let x=0;x<world.cols;x++){
     const c=world.map[y][x];
@@ -676,6 +686,7 @@ function loadLevel(i,keepHp){
     else if(c==='D'){ gate={x:x*TILE+4,y:y*TILE-8,w:32,h:48}; world.map[y][x]='.'; }
     else if(c==='h'){ pickups.push({x:x*TILE+12,y:y*TILE+12,w:16,h:16,t:rnd(0,9)}); world.map[y][x]='.'; }
     else if(c==='w'||c==='f'||c==='t'){ enemies.push(makeEnemy(c,x*TILE,y*TILE)); world.map[y][x]='.'; }
+    else if(c==='Y'||c==='R'||c==='G'){ orbs.push({x:x*TILE+TILE/2,y:y*TILE+TILE/2,r:16,type:c,active:true,cd:0}); world.map[y][x]='.'; }
     else if(c==='B'){ boss=makeBoss(L.boss,x*TILE+TILE/2,y*TILE); world.map[y][x]='.'; SFX.boss(); }
   }
   player=makePlayer(px,py,keepHp);
@@ -691,14 +702,14 @@ function hurtPlayer(dmg,srcX){
   const p=player;
   if(p.inv>0||p.dead||state!=='play') return;
   p.hp-=dmg; p.inv=78; p.recoil=15; p.heal=0; p.dash=0;
-  p.vx=((srcX==null?p.x:srcX)<p.x+p.w/2?1:-1)*5.6; p.vy=-4.2;
+  p.vx=((srcX==null?p.x:srcX)<p.x+p.w/2?1:-1)*5.6; p.vy=-4.2*p.gravDir;
   world.shake=10; burst(p.x+p.w/2,p.y+p.h/2,14,'#e8f2ff',3.6);
   SFX.hurt();
   if(p.hp<=0){ p.hp=0; p.dead=true; SFX.die(); setTimeout(die,700); }
 }
 function respawnSafe(){
   const p=player;
-  p.x=p.safeX; p.y=p.safeY; p.vx=0; p.vy=0;
+  p.x=p.safeX; p.y=p.safeY; p.vx=0; p.vy=0; p.gravDir = p.safeGravDir || 1;
 }
 function die(){
   if(state!=='play') return;
@@ -729,6 +740,36 @@ function updatePlayer(){
     burst(p.x+p.w/2,p.y+p.h/2,9,'#cfe6f2',2.4);
   }
 
+  if(held('jump')) p.buf=9;
+  if(p.buf>0)p.buf--;
+
+  let hitOrb = null;
+  for(let o of orbs){
+    if(o.cd > 0) o.cd--;
+    if(o.cd === 0) o.active = true;
+    if(o.active && p.x < o.x+o.r && p.x+p.w > o.x-o.r && p.y < o.y+o.r && p.y+p.h > o.y-o.r){
+      hitOrb = o;
+    }
+  }
+
+  if(p.buf>0 && hitOrb){
+    hitOrb.active = false;
+    hitOrb.cd = 45;
+    p.buf = 0; p.coyote = 0; p.dash = 0; p.dropping = 0;
+    let col = hitOrb.type==='Y'?'#ffff55' : hitOrb.type==='R'?'#ff5555' : '#55ff55';
+    burst(hitOrb.x, hitOrb.y, 20, col, 4);
+    SFX.jump();
+    p.air = true;
+    p.spinDir = Math.abs(p.vx)>0.3 ? (p.vx>0?1:-1) : p.face;
+
+    if(hitOrb.type === 'Y') p.vy = GD_JUMP * p.gravDir;
+    if(hitOrb.type === 'R') p.vy = GD_JUMP * 1.5 * p.gravDir;
+    if(hitOrb.type === 'G'){
+      p.gravDir *= -1;
+      p.vy = GD_JUMP * p.gravDir;
+    }
+  }
+
   if(p.dash>0){
     p.dash--; p.vy=0; p.vx=p.face*10.4;
     if(p.dash%2===0) parts.push({x:p.x+p.w/2,y:p.y+p.h/2,vx:0,vy:0,life:15,max:15,col:'#9fc9dd',size:5,g:0});
@@ -741,19 +782,19 @@ function updatePlayer(){
       else p.vx*=0.70;
     } else p.vx*=0.86;
     p.vx=clamp(p.vx,-4.3,4.3);
-    p.vy=Math.min(p.vy+GRAV,MAXFALL);
+    
+    if (p.gravDir === 1) p.vy = Math.min(p.vy + GRAV, MAXFALL);
+    else p.vy = Math.max(p.vy - GRAV, -MAXFALL);
   }
 
-  if(held('jump')) p.buf=9;
-  if(p.buf>0)p.buf--;
   if(p.onGround)p.coyote=8; else if(p.coyote>0)p.coyote--;
   if(p.buf>0 && p.coyote>0 && p.heal===0 && p.dash<=0){
-    const onLedge = ledgeAt(Math.floor((p.x+p.w/2)/TILE), Math.floor((p.y+p.h+2)/TILE));
+    const onLedge = p.gravDir===1 && ledgeAt(Math.floor((p.x+p.w/2)/TILE), Math.floor((p.y+p.h+2)/TILE));
     if(held('down') && onLedge){ p.dropping=8; p.y+=3; }
     else {
-      p.vy=GD_JUMP; p.air=true;
+      p.vy=GD_JUMP * p.gravDir; p.air=true;
       p.spinDir = Math.abs(p.vx)>0.3 ? (p.vx>0?1:-1) : p.face;
-      SFX.jump(); burst(p.x+p.w/2,p.y+p.h,5,'#8fa8bb',1.6,2);
+      SFX.jump(); burst(p.x+p.w/2,p.y+(p.gravDir===1?p.h:0),5,'#8fa8bb',1.6,2);
     }
     p.buf=0; p.coyote=0;
   }
@@ -781,20 +822,23 @@ function updatePlayer(){
   for(let cy=y0;cy<=y1;cy++) for(let cx=x0;cx<=x1;cx++) if(spikeAt(cx,cy)) onSpike=true;
   if(onSpike && p.inv<=0){ hurtPlayer(1,null); respawnSafe(); }
 
-  if(p.y>world.h+90){ if(p.inv<=0) hurtPlayer(1,null); respawnSafe(); }
+  if(p.y>world.h+90 || p.y < -90){ if(p.inv<=0) hurtPlayer(1,null); respawnSafe(); }
 
   if(p.onGround && !onSpike && p.inv<=0){
     let clean=true;
-    for(let cx=x0-1;cx<=x1+1;cx++) if(spikeAt(cx,y1)||spikeAt(cx,y1+1)) clean=false;
-    if(clean){ p.safeX=p.x; p.safeY=p.y-2; }
+    let cy = p.gravDir === 1 ? y1 : y0;
+    for(let cx=x0-1;cx<=x1+1;cx++) if(spikeAt(cx,cy)||spikeAt(cx,cy+p.gravDir)) clean=false;
+    if(clean){ p.safeX=p.x; p.safeY=p.y-(2*p.gravDir); p.safeGravDir = p.gravDir; }
   }
 }
 
 function attackBox(){
   const p=player;
   if(p.atk<=0 || p.atk>12) return null;
-  if(p.atkDir==='up')   return {x:p.x-9, y:p.y-52, w:p.w+18, h:56};
-  if(p.atkDir==='down') return {x:p.x-9, y:p.y+p.h-4, w:p.w+18, h:56};
+  let upY = p.gravDir === 1 ? p.y - 52 : p.y + p.h - 4;
+  let dnY = p.gravDir === 1 ? p.y + p.h - 4 : p.y - 52;
+  if(p.atkDir==='up')   return {x:p.x-9, y:upY, w:p.w+18, h:56};
+  if(p.atkDir==='down') return {x:p.x-9, y:dnY, w:p.w+18, h:56};
   return {x: p.face>0? p.x+p.w-6 : p.x-58, y:p.y-2, w:64, h:32};
 }
 
@@ -828,7 +872,7 @@ function combat(){
     }
     if(landed && !p.atkHitDone){
       p.atkHitDone=true; gainSoul(11); world.shake=Math.max(world.shake,5); SFX.hit();
-      if(p.atkDir==='down'){ p.vy=-9.6; p.dropping=6; }
+      if(p.atkDir==='down'){ p.vy=-9.6*p.gravDir; p.dropping=6; }
       else if(p.atkDir==='side') p.vx=-p.face*3.4;
       else p.vy=Math.min(p.vy+2.6,4);
     }
@@ -855,7 +899,6 @@ function combat(){
   }
 
   if(gate && hit(p,gate)) finishLevel();
-
   if(boss && boss.dead && boss.deathT>96) finishLevel();
 }
 
@@ -964,6 +1007,30 @@ function drawTiles(){
       ctx.fillStyle='rgba(255,255,255,0.28)';
       for(let i=0;i<4;i++){ const sx=px+i*10; ctx.fillRect(sx+4,py+15,1.6,TILE-15); }
     }
+  }
+}
+
+function drawOrbs(){
+  for(const o of orbs){
+    const x = o.x - world.camx, y = o.y + YOFF;
+    ctx.save();
+    ctx.globalAlpha = o.active ? 1 : 0.25;
+    let col1, col2;
+    if(o.type==='Y'){ col1='rgba(255,255,170,0.7)'; col2='#e6c800'; }
+    if(o.type==='R'){ col1='rgba(255,170,170,0.7)'; col2='#e60000'; }
+    if(o.type==='G'){ col1='rgba(170,255,170,0.7)'; col2='#00c800'; }
+
+    const rg = ctx.createRadialGradient(x, y, 2, x, y, o.r*2.5);
+    rg.addColorStop(0, col1);
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(x - o.r*3, y - o.r*3, o.r*6, o.r*6);
+
+    ctx.fillStyle = col2;
+    ctx.beginPath(); ctx.arc(x, y, o.r * 0.8, 0, 6.283); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x - o.r*0.2, y - o.r*0.2, o.r*0.3, 0, 6.283); ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -1215,7 +1282,7 @@ function drawPlayer(){
       ctx.save();
       ctx.globalAlpha=clamp(p.dash/11,0,1)*0.95;
       ctx.imageSmoothingEnabled=!SPRITE_PIXEL;
-      ctx.translate(cx,cy); ctx.scale(p.face<0?-1:1,1);
+      ctx.translate(cx,cy); ctx.scale(p.face<0?-1:1,p.gravDir===-1?-1:1);
       ctx.drawImage(IMG.dash.img,-d*0.9,-d*ar/2,d,d*ar);
       ctx.restore();
     } else {
@@ -1236,17 +1303,17 @@ function drawPlayer(){
     if(IMG.slash.ok){
       const s=SLASH_SIZE, ar=IMG.slash.h/IMG.slash.w;
       ctx.translate(cx,cy);
-      if(p.atkDir==='up') ctx.rotate(-Math.PI/2);
-      else if(p.atkDir==='down') ctx.rotate(Math.PI/2);
-      else ctx.scale(p.face<0?-1:1,1);
+      if(p.atkDir==='up') ctx.rotate(-Math.PI/2 * p.gravDir);
+      else if(p.atkDir==='down') ctx.rotate(Math.PI/2 * p.gravDir);
+      else ctx.scale(p.face<0?-1:1, p.gravDir===-1?-1:1);
       ctx.imageSmoothingEnabled=!SPRITE_PIXEL;
       ctx.drawImage(IMG.slash.img, 6+t*10, -s*ar/2, s, s*ar);
     } else {
       ctx.strokeStyle='#f4fbff'; ctx.lineWidth=6-t*3.5; ctx.lineCap='round';
       ctx.beginPath();
       if(p.atkDir==='side') ctx.arc(cx+p.face*(20+t*30), cy, 30, -1.15, 1.15, false);
-      else if(p.atkDir==='up') ctx.arc(cx, cy-30-t*14, 28, 3.35, 6.07, false);
-      else ctx.arc(cx, cy+30+t*14, 28, 0.21, 2.93, false);
+      else if(p.atkDir==='up') ctx.arc(cx, cy-30*p.gravDir-t*14*p.gravDir, 28, 3.35, 6.07, false);
+      else ctx.arc(cx, cy+30*p.gravDir+t*14*p.gravDir, 28, 0.21, 2.93, false);
       ctx.stroke();
     }
     ctx.restore();
@@ -1274,6 +1341,7 @@ function render(){
   ctx.save();
   if(sh>0) ctx.translate(rnd(-sh,sh),rnd(-sh,sh));
   drawTiles();
+  drawOrbs(); 
   drawGate();
   drawPickups();
   for(const e of enemies) if(e.hp>0) drawEnemy(e);
@@ -1510,7 +1578,8 @@ function tick(){
     if(boss) updateBoss(boss);
     updateShots(); updateWaves(); updateParts();
     combat();
-    const target=clamp(player.x+player.w/2-W/2+player.face*44, 0, Math.max(0,world.w-W));
+    // Removed player.face * 44 so the camera doesn't violently jump on turns
+    const target = clamp(player.x+player.w/2-W/2, 0, Math.max(0,world.w-W));
     camSmooth += (target-camSmooth)*0.09;
     world.camx = camSmooth;
     if(world.shake>0){ world.shake*=0.86; if(world.shake<0.4) world.shake=0; }
